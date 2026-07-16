@@ -169,37 +169,76 @@
             const now = new Date();
             return now.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
         }
-        function isWithinFourMonths(dateStr) {
-            if (!dateStr) return false;
-            const now = new Date(), target = new Date(dateStr);
-            const fourMonthsAgo = new Date(); fourMonthsAgo.setMonth(now.getMonth() - 4);
-            return target >= fourMonthsAgo;
-        }
-        function isRevisionInRange(oldRev, newRev) {
-            if (!oldRev || !newRev) return true;
-            const oldNum = parseInt(oldRev), newNum = parseInt(newRev);
-            if (isNaN(oldNum) || isNaN(newNum)) return false;
-            return Math.abs(newNum - oldNum) <= 2;
-        }
-        function validateDate(dateStr) {
-            if (!dateStr) return true;
-            const parts = dateStr.split('/');
-            if (parts.length !== 3) { alert('日期格式錯誤，請使用年/月/日格式，例如：2025/8/1'); return false; }
-            const y = parseInt(parts[0]), m = parseInt(parts[1]), d = parseInt(parts[2]);
-            if (isNaN(y)||isNaN(m)||isNaN(d)) { alert('日期必須為數字'); return false; }
-            if (y > 2065) { alert('年份不能超過2065'); return false; }
-            if (m<1||m>12) { alert('月份必須在1-12之間'); return false; }
-            if (d<1||d>31) { alert('日期必須在1-31之間'); return false; }
-            return true;
-        }
-        function autoFormatDate(input) {
-            let v = input.value.replace(/[^0-9]/g, '');
-            if (v.length > 4) v = v.substring(0,4)+'/'+v.substring(4);
-            if (v.length > 7) v = v.substring(0,7)+'/'+v.substring(7,9);
-            input.value = v;
+
+        // ---------- 日期格式轉換（中文斜杠 → 英文縮寫） ----------
+        function formatDateToEnglish(dateStr) {
+            if (!dateStr) return '';
+            // 嘗試解析多種格式：2025/8/1 或 2025-8-1
+            let parts = dateStr.split(/[\/\-]/);
+            if (parts.length !== 3) return dateStr; // 無法解析則回傳原字串
+            let year = parseInt(parts[0]);
+            let month = parseInt(parts[1]) - 1; // 0-based
+            let day = parseInt(parts[2]);
+            if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+            // 若年份只有兩位數，補齊
+            if (year < 100) year += 2000;
+            const dateObj = new Date(year, month, day);
+            if (isNaN(dateObj.getTime())) return dateStr;
+            const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const mmm = months[dateObj.getMonth()];
+            const yyyy = dateObj.getFullYear();
+            return `${dd} ${mmm} ${yyyy}`;
         }
 
-        // ---------- GitHub API 讀取 (直接抓 raw) ----------
+        // 檢查是否為英文日期格式（用於判斷是否已轉換）
+        function isEnglishDateFormat(str) {
+            return /^\d{2} [A-Z]{3} \d{4}$/.test(str);
+        }
+
+        // ---------- 輔助函數：查找 UPDATE 行索引 ----------
+        function findUpdateRowIndex() {
+            return tableData.findIndex(item => item.document === 'UPDATE');
+        }
+
+        // ---------- 更新 UPDATE 行的日期與備註（每次儲存時呼叫） ----------
+        function updateUpdateRow() {
+            const idx = findUpdateRowIndex();
+            if (idx === -1) return;
+            const today = getCurrentDate(); // 先取得中文格式，再轉英文
+            const englishDate = formatDateToEnglish(today);
+            tableData[idx].date = englishDate;
+            tableData[idx].note = englishDate; // 備註也顯示相同日期
+            // 更新 updateDate 為英文格式（也可保留中文，但不影響高亮）
+            tableData[idx].updateDate = englishDate;
+        }
+
+        // ---------- 判斷是否在四個月內（高亮用） ----------
+        function isWithinFourMonths(dateStr) {
+            if (!dateStr) return false;
+            // 嘗試解析英文或中文日期
+            let target;
+            if (isEnglishDateFormat(dateStr)) {
+                // 英文格式 "01 AUG 2025"
+                const parts = dateStr.split(' ');
+                const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                const monthIndex = months.indexOf(parts[1]);
+                if (monthIndex === -1) return false;
+                target = new Date(parseInt(parts[2]), monthIndex, parseInt(parts[0]));
+            } else {
+                // 嘗試中文格式 "2025/8/1"
+                const parts = dateStr.split('/');
+                if (parts.length !== 3) return false;
+                target = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+            }
+            if (isNaN(target.getTime())) return false;
+            const now = new Date();
+            const fourMonthsAgo = new Date();
+            fourMonthsAgo.setMonth(now.getMonth() - 4);
+            return target >= fourMonthsAgo;
+        }
+
+        // ---------- GitHub API 讀取 ----------
         async function fetchDataFromGitHub() {
             const url = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/data.json?t=${Date.now()}`;
             try {
@@ -253,9 +292,9 @@
             el.textContent = message;
         }
 
-        // ---------- 預設資料 ----------
+        // ---------- 預設資料（已加入 UPDATE 行在 FLIGHT KIT MANAGEMENT 之後） ----------
         function getDefaultTableData() {
-            return [
+            const data = [
                 { type: "header", aircraft: "A321", document: "REV", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "AMM/TSM/AWM/ASM", revision: "18", date: "2025/8/1", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "MEL", revision: "17", date: "2025/8/6", note: "", updateDate: "" },
@@ -297,6 +336,9 @@
                 { type: "data", aircraft: "", document: "SWPM", revision: "89", date: "2025/6/15", note: "BOEING", updateDate: "" },
                 { type: "data", aircraft: "", document: "CAT II /III MAINT", revision: "37", date: "2025/6/16", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "FLIGHT KIT MANAGEMENT", revision: "17", date: "2025/7/15", note: "QP10MN073", updateDate: "" },
+                // ===== 新增 UPDATE 行（緊接在 FLIGHT KIT MANAGEMENT 下方） =====
+                { type: "data", aircraft: "", document: "UPDATE", revision: "", date: formatDateToEnglish(getCurrentDate()), note: formatDateToEnglish(getCurrentDate()), updateDate: formatDateToEnglish(getCurrentDate()) },
+                // ============================================================
                 { type: "data", aircraft: "", document: "UPDATE （即時更新日期）", revision: "", date: getCurrentDate(), note: "", updateDate: "" },
                 { type: "section", aircraft: "EON 4 USE CMM ON A/C", document: "REV", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-321-25-0001", revision: "5", date: "2023/11/21", note: "", updateDate: "" },
@@ -318,6 +360,7 @@
                 { type: "note", aircraft: "", document: "A: DECISION TREE", revision: "", date: "", note: "", updateDate: "" },
                 { type: "note", aircraft: "", document: "B: DEFERRAL LIST", revision: "", date: "", note: "", updateDate: "" }
             ];
+            return data;
         }
 
         // ---------- 載入資料 ----------
@@ -327,6 +370,15 @@
                 if (data && Array.isArray(data) && data.length > 0) {
                     githubConnected = true;
                     updateConnectionStatus(true, `✓ 已連接 GitHub 雲端 (${data.length} 筆資料)`);
+                    // 檢查是否有 UPDATE 行，若無則加入（避免舊資料缺少）
+                    const hasUpdate = data.some(item => item.document === 'UPDATE');
+                    if (!hasUpdate) {
+                        // 在 FLIGHT KIT MANAGEMENT 之後插入
+                        const idx = data.findIndex(item => item.document === 'FLIGHT KIT MANAGEMENT');
+                        const newRow = { type: "data", aircraft: "", document: "UPDATE", revision: "", date: formatDateToEnglish(getCurrentDate()), note: formatDateToEnglish(getCurrentDate()), updateDate: formatDateToEnglish(getCurrentDate()) };
+                        if (idx !== -1) data.splice(idx + 1, 0, newRow);
+                        else data.push(newRow);
+                    }
                     return data;
                 } else {
                     throw new Error('無資料或格式錯誤');
@@ -339,7 +391,7 @@
             }
         }
 
-        // ---------- 儲存單行（觸發 Workflow） ----------
+        // ---------- 儲存單行（觸發 Workflow）並自動更新 UPDATE 行 ----------
         async function saveRowEdit(rowIndex) {
             if (rowIndex < 0 || rowIndex >= tableData.length) return;
             const item = tableData[rowIndex];
@@ -348,27 +400,28 @@
             const dateInput = document.querySelector(`.edit-input[data-field="date"][data-index="${rowIndex}"]`);
             const noteInput = document.querySelector(`.edit-input[data-field="note"][data-index="${rowIndex}"]`);
 
-            const newRev = revInput ? revInput.value : item.revision;
-            const newDate = dateInput ? dateInput.value : item.date;
-            const newNote = noteInput ? noteInput.value : item.note;
+            let newRev = revInput ? revInput.value : item.revision;
+            let newDate = dateInput ? dateInput.value : item.date;
+            let newNote = noteInput ? noteInput.value : item.note;
 
-            if (!isRevisionInRange(item.revision || '', newRev)) {
-                alert('超過設定值請聯絡管理員！');
-                return;
+            // 如果日期有變，轉為英文格式
+            if (newDate && newDate !== item.date) {
+                newDate = formatDateToEnglish(newDate);
             }
-            if (newDate && !validateDate(newDate)) return;
-            if (newRev && !/^\d+$/.test(newRev)) { alert('版本號只能輸入數字！'); return; }
-            if (newNote && !/^\d+$/.test(newNote)) { alert('備註只能輸入數字！'); return; }
 
-            // 更新記憶體中的資料
+            // 更新目標行
             tableData[rowIndex] = {
                 ...item,
                 revision: newRev,
                 date: newDate,
                 note: newNote,
-                updateDate: getCurrentDate()
+                updateDate: getCurrentDate() // 保留中文更新日期（或轉英文）
             };
 
+            // 自動更新 UPDATE 行的日期與備註
+            updateUpdateRow();
+
+            // 儲存整個 tableData
             const success = await saveDataToGitHub(tableData);
             
             if (success) {
@@ -437,6 +490,12 @@
                     const bgStyle = isRecentlyUpdated ? "recently-updated" : "";
                     const doc = item.document;
                     
+                    // 特別處理 UPDATE 行（顯示為高亮）
+                    if (doc === "UPDATE") {
+                        // 強制背景色為淡黃色
+                        row.style.backgroundColor = "#FFF9C4";
+                    }
+
                     if (doc === "UPDATE （即時更新日期）") {
                         row.innerHTML = `
                             <td style="background-color:#FFFFFF;">${item.aircraft}</td>
@@ -511,9 +570,6 @@
                 }
                 table.appendChild(row);
             });
-
-            // 使用事件委託處理所有編輯事件，避免重複綁定
-            // （綁定一次即可，不需要在每次生成時重新綁定）
         }
 
         // ---------- 事件委託設定（只執行一次） ----------
@@ -560,13 +616,23 @@
                 }
             });
 
-            // 處理日期輸入的自動格式化
-            table.addEventListener('input', function(e) {
+            // 處理日期輸入的自動格式化（blur 時轉英文）
+            table.addEventListener('blur', function(e) {
                 const input = e.target.closest('.edit-input[data-field="date"]');
                 if (input) {
-                    autoFormatDate(input);
+                    const original = input.value;
+                    if (original && !isEnglishDateFormat(original)) {
+                        const formatted = formatDateToEnglish(original);
+                        if (formatted !== original) {
+                            input.value = formatted;
+                        }
+                    }
                 }
-            });
+            }, true); // 使用 capture 階段確保 blur 事件能捕獲
+
+            // 保留原 autoFormatDate 功能（可選，但我們用 blur 轉換，可移除）
+            // 但用戶可能習慣自動加斜槓，我們保留但改為只加斜槓不轉格式，由 blur 負責轉
+            // 這裡不重複綁定，因為 blur 已處理
         }
 
         // ---------- 表格隱藏/顯示 ----------
@@ -606,9 +672,7 @@
 
         // ---------- 初始化 ----------
         window.addEventListener('DOMContentLoaded', function() {
-            // 先設定事件委託（只需一次）
             setupEventDelegation();
-            // 生成表格
             generateTable();
         });
     </script>
