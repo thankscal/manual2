@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>手冊資訊 - GitHub 雲端版</title>
-    <!-- 引入 html2canvas 用於截圖 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         /* ===== 完整樣式（與原版相同） ===== */
@@ -60,7 +59,6 @@
         .connection-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .connection-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 
-        /* 下載按鈕樣式 */
         .download-btn {
             padding: 10px 20px;
             background-color: #3498db;
@@ -71,9 +69,7 @@
             cursor: pointer;
             margin: 10px 0;
         }
-        .download-btn:hover {
-            background-color: #2980b9;
-        }
+        .download-btn:hover { background-color: #2980b9; }
 
         @media (max-width: 1024px) { .time-section { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .time-section { grid-template-columns: repeat(2, 1fr); } .type-aligned-header { margin-left: 210px; } .type-aligned-data { margin-left: -90px; width: 120px; } }
@@ -134,7 +130,7 @@
                 <div class="table-content-title">手冊表格內容</div>
                 <button class="table-content-toggle" id="table-toggle">隱藏表格</button>
             </div>
-            <div class="table-content-body">
+            <div class="table-content-body" id="table-content-body">
                 <table class="table-content-table" id="table-content"></table>
             </div>
         </div>
@@ -146,8 +142,7 @@
                 <button class="password-btn" id="password-btn">驗證密碼</button>
             </div>
             <div class="password-error" id="password-error">密碼錯誤，請重新輸入</div>
-            <!-- 下載圖片按鈕（只截取表格區塊） -->
-            <button class="download-btn" id="download-btn">📷 下載表格截圖</button>
+            <button class="download-btn" id="download-btn">📷 下載完整表格截圖</button>
         </div>
     </div>
 
@@ -157,13 +152,11 @@
         // ================================================================
         const REPO_OWNER   = 'thankscal';
         const REPO_NAME    = 'manual';
-        const WORKFLOW_FILE = 'updata-manual.yml';   // 請確認檔名正確
+        const WORKFLOW_FILE = 'updata-manual.yml';
         const BRANCH       = 'main';
-        // ✅ 後端 Proxy 網址（你的 Cloudflare Worker）
         const PROXY_URL    = 'https://manual-proxy.calcch807.workers.dev';
         // ================================================================
 
-        // ---------- 全域變數 ----------
         let tableData = [];
         let isEditMode = false;
         let selectedRows = new Set();
@@ -186,7 +179,6 @@
         updateTime();
         setInterval(updateTime, 1000);
 
-        // ---------- 獲取目前日期時間（格式：YYYY/MM/DD HH:MM:SS） ----------
         function getCurrentDateTime() {
             const now = new Date();
             const y = now.getFullYear();
@@ -198,7 +190,6 @@
             return `${y}/${m}/${d} ${h}:${min}:${s}`;
         }
 
-        // ---------- 日期格式轉換（中文斜杠 → 英文縮寫）用於非UPDATE行 ----------
         function formatDateToEnglish(dateStr) {
             if (!dateStr) return '';
             let parts = dateStr.split(/[\/\-]/);
@@ -221,12 +212,10 @@
             return /^\d{2} [A-Z]{3} \d{4}$/.test(str);
         }
 
-        // ---------- 查找 UPDATE 行索引 ----------
         function findUpdateRowIndex() {
             return tableData.findIndex(item => item.document === 'UPDATE');
         }
 
-        // ---------- 更新 UPDATE 行的日期與備註（使用完整日期時間） ----------
         function updateUpdateRow() {
             const idx = findUpdateRowIndex();
             if (idx === -1) return;
@@ -236,7 +225,6 @@
             tableData[idx].updateDate = datetime;
         }
 
-        // ---------- 判斷是否在四個月內（高亮用） ----------
         function isWithinFourMonths(dateStr) {
             if (!dateStr) return false;
             let target;
@@ -262,7 +250,7 @@
             return target >= fourMonthsAgo;
         }
 
-        // ---------- GitHub API 讀取 ----------
+        // ---------- GitHub API ----------
         async function fetchDataFromGitHub() {
             const url = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/data.json?t=${Date.now()}`;
             try {
@@ -279,7 +267,6 @@
             }
         }
 
-        // ---------- 觸發 Workflow (透過 Cloudflare Proxy) ----------
         async function saveDataToGitHub(dataArray) {
             try {
                 const resp = await fetch(PROXY_URL, {
@@ -312,7 +299,7 @@
             el.textContent = message;
         }
 
-        // ---------- 預設資料（已加入 UPDATE 行） ----------
+        // ---------- 預設資料（含新增 EON ME-787） ----------
         function getDefaultTableData() {
             const data = [
                 { type: "header", aircraft: "A321", document: "REV", revision: "", date: "", note: "", updateDate: "" },
@@ -365,6 +352,9 @@
                 { type: "data", aircraft: "", document: "EON ME-738-25-0008", revision: "5", date: "2023/3/31", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-744-25-0001", revision: "17", date: "2023/12/19", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-777-25-0006", revision: "4", date: "2023/4/17", note: "", updateDate: "" },
+                // ===== 新增 EON ME-787 行（放在現有 EON 最下方） =====
+                { type: "data", aircraft: "", document: "EON ME-787-25-000?", revision: "", date: "", note: "", updateDate: "" },
+                // =======================================================
                 { type: "section", aircraft: "MEL NEF ITEM", document: "TYPE", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "MEL 25-90-50 (A OR B)", revision: "", date: "", note: "A321", updateDate: "" },
                 { type: "data", aircraft: "", document: "MEL 25-90-50 (A OR B)", revision: "", date: "", note: "A330", updateDate: "" },
@@ -381,19 +371,28 @@
             return data;
         }
 
-        // ---------- 載入資料 ----------
+        // ---------- 載入資料（確保新增行存在） ----------
         async function loadTableData() {
             try {
                 const data = await fetchDataFromGitHub();
                 if (data && Array.isArray(data) && data.length > 0) {
                     githubConnected = true;
                     updateConnectionStatus(true, `✓ 已連接 GitHub 雲端 (${data.length} 筆資料)`);
+                    // 確保 UPDATE 行存在
                     const hasUpdate = data.some(item => item.document === 'UPDATE');
                     if (!hasUpdate) {
                         const idx = data.findIndex(item => item.document === 'FLIGHT KIT MANAGEMENT');
                         const newRow = { type: "data", aircraft: "", document: "UPDATE", revision: "", date: getCurrentDateTime(), note: getCurrentDateTime(), updateDate: getCurrentDateTime() };
                         if (idx !== -1) data.splice(idx + 1, 0, newRow);
                         else data.push(newRow);
+                    }
+                    // 確保 EON ME-787 行存在
+                    const has787 = data.some(item => item.document === 'EON ME-787-25-000?');
+                    if (!has787) {
+                        // 找 EON 部分最後一個 data 行（在 MEL NEF ITEM 之前）
+                        let insertIndex = data.findIndex(item => item.type === 'section' && item.aircraft === 'MEL NEF ITEM');
+                        if (insertIndex === -1) insertIndex = data.length;
+                        data.splice(insertIndex, 0, { type: "data", aircraft: "", document: "EON ME-787-25-000?", revision: "", date: "", note: "", updateDate: "" });
                     }
                     return data;
                 } else {
@@ -636,21 +635,35 @@
             }, true);
         }
 
-        // ---------- 下載圖片功能（只截取表格區塊） ----------
+        // ---------- 下載圖片（完整表格） ----------
         document.getElementById('download-btn').addEventListener('click', function() {
-            const element = document.getElementById('table-content-section');
-            html2canvas(element, {
+            const body = document.getElementById('table-content-body');
+            const originalMaxHeight = body.style.maxHeight;
+            const originalOverflow = body.style.overflow;
+
+            // 暫時移除限制，讓整個表格可見
+            body.style.maxHeight = 'none';
+            body.style.overflow = 'visible';
+
+            html2canvas(document.getElementById('table-content-section'), {
                 scale: 1.5,
                 useCORS: true,
                 allowTaint: true,
-                backgroundColor: '#ffffff',  // 白色背景，去除陰影影響
-                logging: false
+                backgroundColor: '#ffffff',
+                logging: false,
+                height: body.scrollHeight,   // 使用實際高度
+                width: body.scrollWidth
             }).then(canvas => {
+                // 恢復原樣
+                body.style.maxHeight = originalMaxHeight || '500px';
+                body.style.overflow = originalOverflow || 'auto';
                 const link = document.createElement('a');
-                link.download = '手冊表格截圖.png';
+                link.download = '完整手冊表格.png';
                 link.href = canvas.toDataURL('image/png');
                 link.click();
             }).catch(error => {
+                body.style.maxHeight = originalMaxHeight || '500px';
+                body.style.overflow = originalOverflow || 'auto';
                 alert('截圖生成失敗：' + error);
             });
         });
