@@ -81,7 +81,7 @@
     </style>
 </head>
 <body>
-    <div class="container" id="page-to-capture">
+    <div class="container">
         <h1 class="main-title">手冊資訊 - GitHub 雲端版</h1>
         <p class="acknowledgment">*特別感謝 吳30cm默默付出</p>
         
@@ -128,6 +128,7 @@
         
         <div class="edit-mode-indicator" id="edit-mode-indicator" style="display: none;">編輯模式已啟用 - 勾選要編輯的列，版本和日期欄位會自動變成編輯模式</div>
         
+        <!-- 表格區塊（截圖目標） -->
         <div class="table-content-section" id="table-content-section">
             <div class="table-content-header">
                 <div class="table-content-title">手冊表格內容</div>
@@ -145,8 +146,8 @@
                 <button class="password-btn" id="password-btn">驗證密碼</button>
             </div>
             <div class="password-error" id="password-error">密碼錯誤，請重新輸入</div>
-            <!-- 下載圖片按鈕 -->
-            <button class="download-btn" id="download-btn">📷 下載圖片 (截圖)</button>
+            <!-- 下載圖片按鈕（只截取表格區塊） -->
+            <button class="download-btn" id="download-btn">📷 下載表格截圖</button>
         </div>
     </div>
 
@@ -200,11 +201,10 @@
         // ---------- 日期格式轉換（中文斜杠 → 英文縮寫）用於非UPDATE行 ----------
         function formatDateToEnglish(dateStr) {
             if (!dateStr) return '';
-            // 嘗試解析多種格式：2025/8/1 或 2025-8-1
             let parts = dateStr.split(/[\/\-]/);
-            if (parts.length !== 3) return dateStr; // 無法解析則回傳原字串
+            if (parts.length !== 3) return dateStr;
             let year = parseInt(parts[0]);
-            let month = parseInt(parts[1]) - 1; // 0-based
+            let month = parseInt(parts[1]) - 1;
             let day = parseInt(parts[2]);
             if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
             if (year < 100) year += 2000;
@@ -233,15 +233,13 @@
             const datetime = getCurrentDateTime();
             tableData[idx].date = datetime;
             tableData[idx].note = datetime;
-            tableData[idx].updateDate = datetime; // 也用於高亮判斷
+            tableData[idx].updateDate = datetime;
         }
 
-        // ---------- 判斷是否在四個月內（高亮用）需支援完整日期時間格式 ----------
+        // ---------- 判斷是否在四個月內（高亮用） ----------
         function isWithinFourMonths(dateStr) {
             if (!dateStr) return false;
-            // 嘗試解析 "YYYY/MM/DD HH:MM:SS" 或英文格式
             let target;
-            // 先檢查是否為完整日期時間格式
             if (/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
                 const parts = dateStr.split(/[\/ :]/);
                 target = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), 
@@ -253,7 +251,6 @@
                 if (monthIndex === -1) return false;
                 target = new Date(parseInt(parts[2]), monthIndex, parseInt(parts[0]));
             } else {
-                // 嘗試簡單日期 "2025/8/1"
                 const parts = dateStr.split('/');
                 if (parts.length !== 3) return false;
                 target = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
@@ -287,9 +284,7 @@
             try {
                 const resp = await fetch(PROXY_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         owner: REPO_OWNER,
                         repo: REPO_NAME,
@@ -298,12 +293,10 @@
                         data: dataArray
                     })
                 });
-
                 if (!resp.ok) {
                     const errText = await resp.text();
                     throw new Error(`Proxy 錯誤 (${resp.status}): ${errText}`);
                 }
-
                 const result = await resp.json();
                 return result.success;
             } catch (error) {
@@ -363,9 +356,7 @@
                 { type: "data", aircraft: "", document: "SWPM", revision: "89", date: "2025/6/15", note: "BOEING", updateDate: "" },
                 { type: "data", aircraft: "", document: "CAT II /III MAINT", revision: "37", date: "2025/6/16", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "FLIGHT KIT MANAGEMENT", revision: "17", date: "2025/7/15", note: "QP10MN073", updateDate: "" },
-                // ===== 新增 UPDATE 行（日期時間格式） =====
                 { type: "data", aircraft: "", document: "UPDATE", revision: "", date: getCurrentDateTime(), note: getCurrentDateTime(), updateDate: getCurrentDateTime() },
-                // ==========================================
                 { type: "data", aircraft: "", document: "UPDATE （即時更新日期）", revision: "", date: getCurrentDateTime(), note: "", updateDate: "" },
                 { type: "section", aircraft: "EON 4 USE CMM ON A/C", document: "REV", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-321-25-0001", revision: "5", date: "2023/11/21", note: "", updateDate: "" },
@@ -416,7 +407,7 @@
             }
         }
 
-        // ---------- 儲存單行（觸發 Workflow）並自動更新 UPDATE 行 ----------
+        // ---------- 儲存單行 ----------
         async function saveRowEdit(rowIndex) {
             if (rowIndex < 0 || rowIndex >= tableData.length) return;
             const item = tableData[rowIndex];
@@ -429,25 +420,21 @@
             let newDate = dateInput ? dateInput.value : item.date;
             let newNote = noteInput ? noteInput.value : item.note;
 
-            // 如果日期有變，轉為英文格式（但不影響 UPDATE 行，因為 UPDATE 行不是透過此方式編輯）
             if (newDate && newDate !== item.date && item.document !== 'UPDATE') {
                 newDate = formatDateToEnglish(newDate);
             }
 
-            // 更新目標行
             tableData[rowIndex] = {
                 ...item,
                 revision: newRev,
                 date: newDate,
                 note: newNote,
-                updateDate: getCurrentDateTime() // 使用完整日期時間
+                updateDate: getCurrentDateTime()
             };
 
-            // 自動更新 UPDATE 行的日期與備註（日期時間格式）
             updateUpdateRow();
 
             const success = await saveDataToGitHub(tableData);
-            
             if (success) {
                 editingRows.delete(rowIndex);
                 await generateTable(); 
@@ -515,7 +502,7 @@
                     const doc = item.document;
                     
                     if (doc === "UPDATE") {
-                        row.style.backgroundColor = "#FFF9C4"; // 淡黃色背景
+                        row.style.backgroundColor = "#FFF9C4";
                     }
 
                     if (doc === "UPDATE （即時更新日期）") {
@@ -594,7 +581,7 @@
             });
         }
 
-        // ---------- 事件委託設定 ----------
+        // ---------- 事件委託 ----------
         function setupEventDelegation() {
             const table = document.getElementById('table-content');
 
@@ -635,7 +622,6 @@
                 }
             });
 
-            // 日期輸入框失去焦點時轉為英文格式（一般行）
             table.addEventListener('blur', function(e) {
                 const input = e.target.closest('.edit-input[data-field="date"]');
                 if (input) {
@@ -650,17 +636,18 @@
             }, true);
         }
 
-        // ---------- 下載圖片功能 (截圖) ----------
+        // ---------- 下載圖片功能（只截取表格區塊） ----------
         document.getElementById('download-btn').addEventListener('click', function() {
-            const element = document.getElementById('page-to-capture');
+            const element = document.getElementById('table-content-section');
             html2canvas(element, {
-                scale: 1.5, // 提高畫質
+                scale: 1.5,
                 useCORS: true,
                 allowTaint: true,
-                backgroundColor: '#f8f8f8'
+                backgroundColor: '#ffffff',  // 白色背景，去除陰影影響
+                logging: false
             }).then(canvas => {
                 const link = document.createElement('a');
-                link.download = '手冊資訊截圖.png';
+                link.download = '手冊表格截圖.png';
                 link.href = canvas.toDataURL('image/png');
                 link.click();
             }).catch(error => {
