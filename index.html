@@ -6,7 +6,7 @@
     <title>手冊資訊 - GitHub 雲端版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        /* ===== 完整樣式（與原版相同） ===== */
+        /* ===== 完整樣式 ===== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Arial', sans-serif; background-color: #f8f8f8; padding: 15px; color: #333; line-height: 1.5; display: flex; flex-direction: column; min-height: 100vh; }
         .container { max-width: 1200px; margin: 0 auto; flex: 1; display: flex; flex-direction: column; }
@@ -299,7 +299,7 @@
             el.textContent = message;
         }
 
-        // ---------- 預設資料（含新增 EON ME-787） ----------
+        // ---------- 預設資料（含 EON ME-787） ----------
         function getDefaultTableData() {
             const data = [
                 { type: "header", aircraft: "A321", document: "REV", revision: "", date: "", note: "", updateDate: "" },
@@ -352,9 +352,9 @@
                 { type: "data", aircraft: "", document: "EON ME-738-25-0008", revision: "5", date: "2023/3/31", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-744-25-0001", revision: "17", date: "2023/12/19", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-777-25-0006", revision: "4", date: "2023/4/17", note: "", updateDate: "" },
+                // ===== 新增 EON ME-787（與上方 777 對齊） =====
                 { type: "data", aircraft: "", document: "EON ME-787-25-000?", revision: "", date: "", note: "", updateDate: "" },
-                
-                // =======================================================
+                // =================================================
                 { type: "section", aircraft: "MEL NEF ITEM", document: "TYPE", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "MEL 25-90-50 (A OR B)", revision: "", date: "", note: "A321", updateDate: "" },
                 { type: "data", aircraft: "", document: "MEL 25-90-50 (A OR B)", revision: "", date: "", note: "A330", updateDate: "" },
@@ -371,7 +371,7 @@
             return data;
         }
 
-        // ---------- 載入資料（確保新增行存在） ----------
+        // ---------- 載入資料（確保 UPDATE 與 EON 787 存在） ----------
         async function loadTableData() {
             try {
                 const data = await fetchDataFromGitHub();
@@ -386,13 +386,15 @@
                         if (idx !== -1) data.splice(idx + 1, 0, newRow);
                         else data.push(newRow);
                     }
-                    // 確保 EON ME-787 行存在
+                    // 確保 EON ME-787 行存在（插入在 EON ME-777 之後，MEL NEF ITEM 之前）
                     const has787 = data.some(item => item.document === 'EON ME-787-25-000?');
                     if (!has787) {
-                        // 找 EON 部分最後一個 data 行（在 MEL NEF ITEM 之前）
-                        let insertIndex = data.findIndex(item => item.type === 'section' && item.aircraft === 'MEL NEF ITEM');
-                        if (insertIndex === -1) insertIndex = data.length;
-                        data.splice(insertIndex, 0, { type: "data", aircraft: "", document: "EON ME-787-25-000?", revision: "", date: "", note: "", updateDate: "" });
+                        // 找 EON 777 行的索引，在其後插入
+                        const idx777 = data.findIndex(item => item.document === 'EON ME-777-25-0006');
+                        const insertIndex = (idx777 !== -1) ? idx777 + 1 : data.findIndex(item => item.type === 'section' && item.aircraft === 'MEL NEF ITEM');
+                        const newRow = { type: "data", aircraft: "", document: "EON ME-787-25-000?", revision: "", date: "", note: "", updateDate: "" };
+                        if (insertIndex !== -1) data.splice(insertIndex, 0, newRow);
+                        else data.push(newRow);
                     }
                     return data;
                 } else {
@@ -635,7 +637,7 @@
             }, true);
         }
 
-        // ---------- 下載圖片（完整表格） ----------
+        // ---------- 下載圖片（完整表格，自動展開） ----------
         document.getElementById('download-btn').addEventListener('click', function() {
             const body = document.getElementById('table-content-body');
             const originalMaxHeight = body.style.maxHeight;
@@ -651,7 +653,7 @@
                 allowTaint: true,
                 backgroundColor: '#ffffff',
                 logging: false,
-                height: body.scrollHeight,   // 使用實際高度
+                height: body.scrollHeight,
                 width: body.scrollWidth
             }).then(canvas => {
                 // 恢復原樣
@@ -710,4 +712,4 @@
         });
     </script>
 </body>
-</html>
+    </html>
