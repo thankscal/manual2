@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>手冊資訊 - GitHub 雲端版</title>
+    <!-- 引入 html2canvas 用於截圖 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         /* ===== 完整樣式（與原版相同） ===== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,13 +59,29 @@
         .connection-status { padding: 10px; margin: 10px 0; border-radius: 5px; text-align: center; font-weight: bold; }
         .connection-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .connection-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        /* 下載按鈕樣式 */
+        .download-btn {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .download-btn:hover {
+            background-color: #2980b9;
+        }
+
         @media (max-width: 1024px) { .time-section { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .time-section { grid-template-columns: repeat(2, 1fr); } .type-aligned-header { margin-left: 210px; } .type-aligned-data { margin-left: -90px; width: 120px; } }
         @media (max-width: 480px) { .time-section { grid-template-columns: 1fr; } .type-aligned-header { margin-left: 120px; } .type-aligned-data { margin-left: -60px; width: 80px; } }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="page-to-capture">
         <h1 class="main-title">手冊資訊 - GitHub 雲端版</h1>
         <p class="acknowledgment">*特別感謝 吳30cm默默付出</p>
         
@@ -127,6 +145,8 @@
                 <button class="password-btn" id="password-btn">驗證密碼</button>
             </div>
             <div class="password-error" id="password-error">密碼錯誤，請重新輸入</div>
+            <!-- 下載圖片按鈕 -->
+            <button class="download-btn" id="download-btn">📷 下載圖片 (截圖)</button>
         </div>
     </div>
 
@@ -165,12 +185,19 @@
         updateTime();
         setInterval(updateTime, 1000);
 
-        function getCurrentDate() {
+        // ---------- 獲取目前日期時間（格式：YYYY/MM/DD HH:MM:SS） ----------
+        function getCurrentDateTime() {
             const now = new Date();
-            return now.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const h = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            return `${y}/${m}/${d} ${h}:${min}:${s}`;
         }
 
-        // ---------- 日期格式轉換（中文斜杠 → 英文縮寫） ----------
+        // ---------- 日期格式轉換（中文斜杠 → 英文縮寫）用於非UPDATE行 ----------
         function formatDateToEnglish(dateStr) {
             if (!dateStr) return '';
             // 嘗試解析多種格式：2025/8/1 或 2025-8-1
@@ -180,7 +207,6 @@
             let month = parseInt(parts[1]) - 1; // 0-based
             let day = parseInt(parts[2]);
             if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
-            // 若年份只有兩位數，補齊
             if (year < 100) year += 2000;
             const dateObj = new Date(year, month, day);
             if (isNaN(dateObj.getTime())) return dateStr;
@@ -191,42 +217,43 @@
             return `${dd} ${mmm} ${yyyy}`;
         }
 
-        // 檢查是否為英文日期格式（用於判斷是否已轉換）
         function isEnglishDateFormat(str) {
             return /^\d{2} [A-Z]{3} \d{4}$/.test(str);
         }
 
-        // ---------- 輔助函數：查找 UPDATE 行索引 ----------
+        // ---------- 查找 UPDATE 行索引 ----------
         function findUpdateRowIndex() {
             return tableData.findIndex(item => item.document === 'UPDATE');
         }
 
-        // ---------- 更新 UPDATE 行的日期與備註（每次儲存時呼叫） ----------
+        // ---------- 更新 UPDATE 行的日期與備註（使用完整日期時間） ----------
         function updateUpdateRow() {
             const idx = findUpdateRowIndex();
             if (idx === -1) return;
-            const today = getCurrentDate(); // 先取得中文格式，再轉英文
-            const englishDate = formatDateToEnglish(today);
-            tableData[idx].date = englishDate;
-            tableData[idx].note = englishDate; // 備註也顯示相同日期
-            // 更新 updateDate 為英文格式（也可保留中文，但不影響高亮）
-            tableData[idx].updateDate = englishDate;
+            const datetime = getCurrentDateTime();
+            tableData[idx].date = datetime;
+            tableData[idx].note = datetime;
+            tableData[idx].updateDate = datetime; // 也用於高亮判斷
         }
 
-        // ---------- 判斷是否在四個月內（高亮用） ----------
+        // ---------- 判斷是否在四個月內（高亮用）需支援完整日期時間格式 ----------
         function isWithinFourMonths(dateStr) {
             if (!dateStr) return false;
-            // 嘗試解析英文或中文日期
+            // 嘗試解析 "YYYY/MM/DD HH:MM:SS" 或英文格式
             let target;
-            if (isEnglishDateFormat(dateStr)) {
-                // 英文格式 "01 AUG 2025"
+            // 先檢查是否為完整日期時間格式
+            if (/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+                const parts = dateStr.split(/[\/ :]/);
+                target = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), 
+                                 parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+            } else if (isEnglishDateFormat(dateStr)) {
                 const parts = dateStr.split(' ');
                 const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
                 const monthIndex = months.indexOf(parts[1]);
                 if (monthIndex === -1) return false;
                 target = new Date(parseInt(parts[2]), monthIndex, parseInt(parts[0]));
             } else {
-                // 嘗試中文格式 "2025/8/1"
+                // 嘗試簡單日期 "2025/8/1"
                 const parts = dateStr.split('/');
                 if (parts.length !== 3) return false;
                 target = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
@@ -292,7 +319,7 @@
             el.textContent = message;
         }
 
-        // ---------- 預設資料（已加入 UPDATE 行在 FLIGHT KIT MANAGEMENT 之後） ----------
+        // ---------- 預設資料（已加入 UPDATE 行） ----------
         function getDefaultTableData() {
             const data = [
                 { type: "header", aircraft: "A321", document: "REV", revision: "", date: "", note: "", updateDate: "" },
@@ -336,10 +363,10 @@
                 { type: "data", aircraft: "", document: "SWPM", revision: "89", date: "2025/6/15", note: "BOEING", updateDate: "" },
                 { type: "data", aircraft: "", document: "CAT II /III MAINT", revision: "37", date: "2025/6/16", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "FLIGHT KIT MANAGEMENT", revision: "17", date: "2025/7/15", note: "QP10MN073", updateDate: "" },
-                // ===== 新增 UPDATE 行（緊接在 FLIGHT KIT MANAGEMENT 下方） =====
-                { type: "data", aircraft: "", document: "UPDATE", revision: "", date: formatDateToEnglish(getCurrentDate()), note: formatDateToEnglish(getCurrentDate()), updateDate: formatDateToEnglish(getCurrentDate()) },
-                // ============================================================
-                { type: "data", aircraft: "", document: "UPDATE （即時更新日期）", revision: "", date: getCurrentDate(), note: "", updateDate: "" },
+                // ===== 新增 UPDATE 行（日期時間格式） =====
+                { type: "data", aircraft: "", document: "UPDATE", revision: "", date: getCurrentDateTime(), note: getCurrentDateTime(), updateDate: getCurrentDateTime() },
+                // ==========================================
+                { type: "data", aircraft: "", document: "UPDATE （即時更新日期）", revision: "", date: getCurrentDateTime(), note: "", updateDate: "" },
                 { type: "section", aircraft: "EON 4 USE CMM ON A/C", document: "REV", revision: "", date: "", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-321-25-0001", revision: "5", date: "2023/11/21", note: "", updateDate: "" },
                 { type: "data", aircraft: "", document: "EON ME-333-25-0004", revision: "1", date: "2024/5/21", note: "", updateDate: "" },
@@ -370,12 +397,10 @@
                 if (data && Array.isArray(data) && data.length > 0) {
                     githubConnected = true;
                     updateConnectionStatus(true, `✓ 已連接 GitHub 雲端 (${data.length} 筆資料)`);
-                    // 檢查是否有 UPDATE 行，若無則加入（避免舊資料缺少）
                     const hasUpdate = data.some(item => item.document === 'UPDATE');
                     if (!hasUpdate) {
-                        // 在 FLIGHT KIT MANAGEMENT 之後插入
                         const idx = data.findIndex(item => item.document === 'FLIGHT KIT MANAGEMENT');
-                        const newRow = { type: "data", aircraft: "", document: "UPDATE", revision: "", date: formatDateToEnglish(getCurrentDate()), note: formatDateToEnglish(getCurrentDate()), updateDate: formatDateToEnglish(getCurrentDate()) };
+                        const newRow = { type: "data", aircraft: "", document: "UPDATE", revision: "", date: getCurrentDateTime(), note: getCurrentDateTime(), updateDate: getCurrentDateTime() };
                         if (idx !== -1) data.splice(idx + 1, 0, newRow);
                         else data.push(newRow);
                     }
@@ -404,8 +429,8 @@
             let newDate = dateInput ? dateInput.value : item.date;
             let newNote = noteInput ? noteInput.value : item.note;
 
-            // 如果日期有變，轉為英文格式
-            if (newDate && newDate !== item.date) {
+            // 如果日期有變，轉為英文格式（但不影響 UPDATE 行，因為 UPDATE 行不是透過此方式編輯）
+            if (newDate && newDate !== item.date && item.document !== 'UPDATE') {
                 newDate = formatDateToEnglish(newDate);
             }
 
@@ -415,13 +440,12 @@
                 revision: newRev,
                 date: newDate,
                 note: newNote,
-                updateDate: getCurrentDate() // 保留中文更新日期（或轉英文）
+                updateDate: getCurrentDateTime() // 使用完整日期時間
             };
 
-            // 自動更新 UPDATE 行的日期與備註
+            // 自動更新 UPDATE 行的日期與備註（日期時間格式）
             updateUpdateRow();
 
-            // 儲存整個 tableData
             const success = await saveDataToGitHub(tableData);
             
             if (success) {
@@ -433,7 +457,7 @@
             }
         }
 
-        // ---------- 生成表格（唯一定義，使用事件委託） ----------
+        // ---------- 生成表格 ----------
         async function generateTable() {
             tableData = await loadTableData();
             const table = document.getElementById('table-content');
@@ -490,10 +514,8 @@
                     const bgStyle = isRecentlyUpdated ? "recently-updated" : "";
                     const doc = item.document;
                     
-                    // 特別處理 UPDATE 行（顯示為高亮）
                     if (doc === "UPDATE") {
-                        // 強制背景色為淡黃色
-                        row.style.backgroundColor = "#FFF9C4";
+                        row.style.backgroundColor = "#FFF9C4"; // 淡黃色背景
                     }
 
                     if (doc === "UPDATE （即時更新日期）") {
@@ -572,11 +594,10 @@
             });
         }
 
-        // ---------- 事件委託設定（只執行一次） ----------
+        // ---------- 事件委託設定 ----------
         function setupEventDelegation() {
             const table = document.getElementById('table-content');
 
-            // 處理 checkbox 變更
             table.addEventListener('change', function(e) {
                 const cb = e.target.closest('.edit-checkbox');
                 if (cb) {
@@ -592,7 +613,6 @@
                 }
             });
 
-            // 處理按鈕點擊（保存 / 取消）
             table.addEventListener('click', function(e) {
                 const btn = e.target.closest('.edit-btn');
                 if (!btn) return;
@@ -605,7 +625,6 @@
                 }
             });
 
-            // 處理輸入框的 keypress（Enter 保存）
             table.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     const input = e.target.closest('.edit-input');
@@ -616,7 +635,7 @@
                 }
             });
 
-            // 處理日期輸入的自動格式化（blur 時轉英文）
+            // 日期輸入框失去焦點時轉為英文格式（一般行）
             table.addEventListener('blur', function(e) {
                 const input = e.target.closest('.edit-input[data-field="date"]');
                 if (input) {
@@ -628,12 +647,26 @@
                         }
                     }
                 }
-            }, true); // 使用 capture 階段確保 blur 事件能捕獲
-
-            // 保留原 autoFormatDate 功能（可選，但我們用 blur 轉換，可移除）
-            // 但用戶可能習慣自動加斜槓，我們保留但改為只加斜槓不轉格式，由 blur 負責轉
-            // 這裡不重複綁定，因為 blur 已處理
+            }, true);
         }
+
+        // ---------- 下載圖片功能 (截圖) ----------
+        document.getElementById('download-btn').addEventListener('click', function() {
+            const element = document.getElementById('page-to-capture');
+            html2canvas(element, {
+                scale: 1.5, // 提高畫質
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#f8f8f8'
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = '手冊資訊截圖.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(error => {
+                alert('截圖生成失敗：' + error);
+            });
+        });
 
         // ---------- 表格隱藏/顯示 ----------
         document.getElementById('table-toggle').addEventListener('click', function() {
@@ -648,7 +681,7 @@
             }
         });
 
-        // ---------- 密碼驗證（密碼：thankscal） ----------
+        // ---------- 密碼驗證 ----------
         document.getElementById('password-btn').addEventListener('click', function() {
             const input = document.getElementById('password-input');
             const error = document.getElementById('password-error');
